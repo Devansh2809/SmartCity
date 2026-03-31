@@ -1,0 +1,586 @@
+{% extends 'base.html' %}
+{% block title %}Admin Panel — Smart City{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* ── Kanban shell ─────────────────────────── */
+  .kb-wrap {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 20px;
+    align-items: flex-start;
+    min-height: calc(100vh - 260px);
+  }
+
+  .kb-wrap::-webkit-scrollbar { height: 6px; }
+  .kb-wrap::-webkit-scrollbar-thumb { background: var(--n-300); border-radius: 3px; }
+
+  /* ── Column ───────────────────────────────── */
+  .kb-col {
+    flex-shrink: 0;
+    width: 256px;
+    border-radius: var(--r-lg);
+    background: var(--n-100);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 260px);
+  }
+
+  .kb-col-header {
+    padding: 11px 14px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    background: var(--surface);
+    border-top: 3px solid var(--col-accent);
+    flex-shrink: 0;
+  }
+
+  .kb-col-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .kb-col-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--col-accent);
+    flex-shrink: 0;
+  }
+
+  .kb-col-count {
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: var(--n-200);
+    color: var(--text-2);
+    min-width: 24px;
+    text-align: center;
+    transition: background 200ms;
+  }
+
+  .kb-col-body {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .kb-col-body::-webkit-scrollbar { width: 4px; }
+  .kb-col-body::-webkit-scrollbar-thumb { background: var(--n-300); border-radius: 2px; }
+
+  .kb-col-empty {
+    padding: 24px 12px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--text-3);
+    border: 1.5px dashed var(--border);
+    border-radius: var(--r-md);
+  }
+
+  /* ── Card ─────────────────────────────────── */
+  .kb-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 11px 12px 10px;
+    box-shadow: var(--sh-xs);
+    transition: box-shadow var(--dur), transform var(--dur), opacity 200ms;
+    position: relative;
+  }
+
+  .kb-card:hover { box-shadow: var(--sh-sm); transform: translateY(-1px); }
+  .kb-card.overdue { border-left: 3px solid var(--red); }
+
+  .kb-card.moving {
+    opacity: .4;
+    pointer-events: none;
+  }
+
+  .kb-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 7px;
+    gap: 4px;
+  }
+
+  .kb-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.35;
+    margin-bottom: 4px;
+  }
+
+  .kb-card-id {
+    font-size: 11px;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .kb-card-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .kb-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    color: var(--text-2);
+  }
+
+  .kb-meta-row i { font-size: 11px; color: var(--text-3); flex-shrink: 0; }
+  .kb-meta-row.overdue-row { color: var(--red); font-weight: 600; }
+  .kb-meta-row.overdue-row i { color: var(--red); }
+
+  /* ── Card controls ────────────────────────── */
+  .kb-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .kb-select {
+    font-size: 12px !important;
+    padding: 4px 8px !important;
+    border-radius: var(--r-sm) !important;
+    height: 28px;
+  }
+
+  .kb-btn-row {
+    display: flex;
+    gap: 4px;
+  }
+
+  .kb-apply {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: var(--r-sm);
+    flex: 1;
+  }
+
+  .kb-view {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: var(--r-sm);
+    flex-shrink: 0;
+  }
+
+  /* ── Filter bar ───────────────────────────── */
+  .kb-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  /* ── Stats strip ──────────────────────────── */
+  .kb-stats {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .kb-stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 10px 16px;
+    text-align: center;
+    min-width: 90px;
+    flex: 1;
+  }
+
+  .kb-stat-val { font-size: 22px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
+  .kb-stat-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-2); font-weight: 600; margin-top: 4px; }
+
+  /* ── Toast feedback ───────────────────────── */
+  .kb-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9999;
+    background: var(--n-800);
+    color: #f1f5f9;
+    font-size: 13.5px;
+    padding: 11px 16px;
+    border-radius: var(--r-md);
+    box-shadow: var(--sh-md);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 200ms, transform 200ms;
+    pointer-events: none;
+    max-width: 320px;
+  }
+
+  .kb-toast.show { opacity: 1; transform: translateY(0); }
+  .kb-toast.error { background: var(--red); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 page-wrap">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Admin Panel</h1>
+      <p class="page-subtitle">Track and manage all reported incidents across departments</p>
+    </div>
+    <a href="/report/" class="btn btn-primary">
+      <i class="bi bi-plus-lg"></i>New Report
+    </a>
+  </div>
+
+  <!-- Stats strip -->
+  <div class="kb-stats">
+    <div class="kb-stat">
+      <div class="kb-stat-val" style="color:var(--text);">{{ incidents|length }}</div>
+      <div class="kb-stat-lbl">Total</div>
+    </div>
+    {% for code, label in status_choices %}
+      <div class="kb-stat">
+        <div class="kb-stat-val js-stat-val" data-status="{{ code }}" style="color:var(--text);">—</div>
+        <div class="kb-stat-lbl">{{ label }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Filters -->
+  <div class="kb-filter-bar">
+    <select id="f-type" class="form-select form-select-sm" style="width:160px;">
+      <option value="">All Types</option>
+      {% for code, label in type_choices %}
+        <option value="{{ code }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" id="f-search" class="form-control form-control-sm" style="width:220px;" placeholder="Search title or ID…">
+    <button id="f-reset" class="btn btn-outline-secondary btn-sm">Reset</button>
+    <span id="f-count" style="font-size:12.5px;color:var(--text-2);margin-left:auto;"></span>
+  </div>
+
+  <!-- Kanban board -->
+  <div class="kb-wrap" id="kb-board">
+
+    {% for status_code, status_label in status_choices %}
+      <div class="kb-col" id="col-{{ status_code }}"
+           style="--col-accent:{{ status_code|lower|default:'#888' }}">
+        <div class="kb-col-header">
+          <div class="kb-col-label">
+            <span class="kb-col-dot"></span>
+            {{ status_label }}
+          </div>
+          <span class="kb-col-count" id="cnt-{{ status_code }}">0</span>
+        </div>
+        <div class="kb-col-body" id="body-{{ status_code }}">
+          {% for inc in incidents %}
+            {% if inc.status == status_code %}
+              <div class="kb-card {% if inc.is_overdue %}overdue{% endif %}"
+                   id="card-{{ inc.pk }}"
+                   data-status="{{ inc.status }}"
+                   data-type="{{ inc.incident_type }}"
+                   data-title="{{ inc.title|lower }}"
+                   data-id="{{ inc.tracking_id|lower }}">
+
+                <!-- Top row: type chip + priority badge -->
+                <div class="kb-card-top">
+                  <span style="font-size:11px;background:var(--n-100);color:var(--text-2);padding:2px 7px;border-radius:3px;border:1px solid var(--border);font-weight:500;">
+                    {{ inc.get_incident_type_display }}
+                  </span>
+                  <span class="badge priority-{{ inc.priority|lower }}">{{ inc.get_priority_display }}</span>
+                </div>
+
+                <!-- Title + ID -->
+                <div class="kb-card-title">{{ inc.title|truncatechars:52 }}</div>
+                <code class="kb-card-id">{{ inc.tracking_id }}</code>
+
+                <!-- Meta rows -->
+                <div class="kb-card-meta">
+                  <div class="kb-meta-row">
+                    <i class="bi bi-building"></i>
+                    {{ inc.department.name|default:"No dept" }}
+                  </div>
+                  <div class="kb-meta-row">
+                    <i class="bi bi-person"></i>
+                    {{ inc.reported_by.username }}
+                  </div>
+                  {% if inc.assigned_to %}
+                    <div class="kb-meta-row">
+                      <i class="bi bi-tools"></i>
+                      {{ inc.assigned_to.username }}
+                    </div>
+                  {% endif %}
+                  {% if inc.deadline %}
+                    <div class="kb-meta-row {% if inc.is_overdue %}overdue-row{% endif %}">
+                      <i class="bi bi-clock"></i>
+                      {{ inc.deadline|date:"d M, H:i" }}
+                      {% if inc.is_overdue %}<span class="badge status-escalated" style="font-size:10px;margin-left:3px;">Overdue</span>{% endif %}
+                    </div>
+                  {% endif %}
+                </div>
+
+                <!-- Controls -->
+                <div class="kb-controls">
+                  <select class="form-select kb-select kb-status-sel" data-id="{{ inc.pk }}">
+                    {% for code, label in status_choices %}
+                      <option value="{{ code }}" {% if inc.status == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                  <select class="form-select kb-select kb-worker-sel" data-id="{{ inc.pk }}">
+                    <option value="">Assign worker…</option>
+                    {% for w in workers %}
+                      <option value="{{ w.pk }}" {% if inc.assigned_to == w %}selected{% endif %}>{{ w.username }}</option>
+                    {% endfor %}
+                  </select>
+                  <div class="kb-btn-row">
+                    <button class="btn btn-primary btn-sm kb-apply kb-apply-btn" data-id="{{ inc.pk }}">
+                      <i class="bi bi-check-lg"></i> Apply
+                    </button>
+                    <a href="/incidents/{{ inc.pk }}/" class="btn btn-outline-secondary btn-sm kb-view" title="View details">
+                      <i class="bi bi-arrow-up-right"></i>
+                    </a>
+                  </div>
+                </div>
+
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+
+  </div>
+
+</div>
+
+<!-- Feedback toast -->
+<div class="kb-toast" id="kb-toast">
+  <i class="bi bi-check-circle-fill" id="kb-toast-icon"></i>
+  <span id="kb-toast-msg">Updated.</span>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Column accent colors ────────────────────
+const COL_COLORS = {
+  SUBMITTED:   '#2563eb',
+  ASSIGNED:    '#ca8a04',
+  IN_PROGRESS: '#c2410c',
+  RESOLVED:    '#16a34a',
+  CLOSED:      '#64748b',
+  ESCALATED:   '#7c3aed',
+};
+
+// Apply accent colors to columns
+Object.entries(COL_COLORS).forEach(([status, color]) => {
+  const col = document.getElementById('col-' + status);
+  if (col) col.style.setProperty('--col-accent', color);
+});
+
+// ── Update column counts ────────────────────
+function refreshCounts() {
+  const statusCodes = Object.keys(COL_COLORS);
+  let visible = 0;
+
+  statusCodes.forEach(status => {
+    const body = document.getElementById('body-' + status);
+    const cnt  = document.getElementById('cnt-' + status);
+    const stat = document.querySelector(`.js-stat-val[data-status="${status}"]`);
+    if (!body || !cnt) return;
+
+    const cards = body.querySelectorAll('.kb-card:not([style*="display: none"]):not([style*="display:none"])');
+    cnt.textContent = cards.length;
+    if (stat) stat.textContent = cards.length;
+    visible += cards.length;
+  });
+
+  const fc = document.getElementById('f-count');
+  if (fc) fc.textContent = visible + ' incident' + (visible !== 1 ? 's' : '');
+}
+
+// ── CSRF helper ─────────────────────────────
+function getCsrf() {
+  const v = document.cookie.match('(^|;) ?csrftoken=([^;]*)(;|$)');
+  return v ? v[2] : null;
+}
+
+// ── Toast ────────────────────────────────────
+function showToast(msg, isError) {
+  const t   = document.getElementById('kb-toast');
+  const m   = document.getElementById('kb-toast-msg');
+  const ico = document.getElementById('kb-toast-icon');
+  m.textContent = msg;
+  t.className   = 'kb-toast' + (isError ? ' error' : '');
+  ico.className = isError ? 'bi bi-x-circle-fill' : 'bi bi-check-circle-fill';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ── Apply button click ───────────────────────
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest('.kb-apply-btn');
+  if (!btn) return;
+
+  const id     = btn.dataset.id;
+  const card   = document.getElementById('card-' + id);
+  const status = card.querySelector('.kb-status-sel').value;
+  const worker = card.querySelector('.kb-worker-sel').value;
+
+  // Loading state
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border" style="width:11px;height:11px;border-width:2px;"></span>';
+  card.classList.add('moving');
+
+  fetch(`/api/incidents/${id}/status/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': getCsrf()
+    },
+    body: JSON.stringify({ status: status, assigned_to: worker || null })
+  })
+  .then(r => r.json())
+  .then(data => {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check-lg"></i> Apply';
+    card.classList.remove('moving');
+
+    if (data.success) {
+      const newStatus  = data.status;
+      const targetBody = document.getElementById('body-' + newStatus);
+
+      if (targetBody && card.dataset.status !== newStatus) {
+        // Animate out
+        card.style.transition = 'opacity 180ms, transform 180ms';
+        card.style.opacity = '0';
+        card.style.transform = 'scale(.96)';
+
+        setTimeout(() => {
+          // Move to new column
+          card.dataset.status = newStatus;
+          card.style.opacity = '0';
+          card.style.transform = 'scale(.96)';
+          targetBody.prepend(card);
+
+          // Animate in
+          requestAnimationFrame(() => {
+            card.style.transition = 'opacity 200ms, transform 200ms';
+            card.style.opacity = '1';
+            card.style.transform = 'scale(1)';
+          });
+
+          refreshCounts();
+          updateEmptyStates();
+        }, 180);
+      }
+
+      // Update worker display if assigned
+      if (worker) {
+        const workerSel = card.querySelector('.kb-worker-sel');
+        const workerName = workerSel.options[workerSel.selectedIndex].text;
+        let workerRow = card.querySelector('.kb-worker-row');
+        if (!workerRow) {
+          workerRow = document.createElement('div');
+          workerRow.className = 'kb-meta-row kb-worker-row';
+          workerRow.innerHTML = '<i class="bi bi-tools"></i><span></span>';
+          card.querySelector('.kb-card-meta').appendChild(workerRow);
+        }
+        workerRow.querySelector('span').textContent = workerName;
+      }
+
+      showToast('Incident updated successfully');
+    } else {
+      showToast('Update failed', true);
+    }
+  })
+  .catch(() => {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check-lg"></i> Apply';
+    card.classList.remove('moving');
+    showToast('Connection error', true);
+  });
+});
+
+// ── Empty state helper ───────────────────────
+function updateEmptyStates() {
+  Object.keys(COL_COLORS).forEach(status => {
+    const body  = document.getElementById('body-' + status);
+    if (!body) return;
+    const cards = body.querySelectorAll('.kb-card');
+    let empty   = body.querySelector('.kb-col-empty');
+
+    if (cards.length === 0) {
+      if (!empty) {
+        empty = document.createElement('div');
+        empty.className = 'kb-col-empty';
+        empty.textContent = 'No incidents here';
+        body.appendChild(empty);
+      }
+    } else {
+      if (empty) empty.remove();
+    }
+  });
+}
+
+// ── Filtering ────────────────────────────────
+function applyFilters() {
+  const typeVal   = document.getElementById('f-type').value.toLowerCase();
+  const searchVal = document.getElementById('f-search').value.toLowerCase().trim();
+
+  document.querySelectorAll('.kb-card').forEach(card => {
+    const matchType   = !typeVal   || card.dataset.type.toLowerCase() === typeVal;
+    const matchSearch = !searchVal ||
+      card.dataset.title.includes(searchVal) ||
+      card.dataset.id.includes(searchVal);
+
+    card.style.display = (matchType && matchSearch) ? '' : 'none';
+  });
+
+  refreshCounts();
+  updateEmptyStates();
+}
+
+document.getElementById('f-type').addEventListener('change', applyFilters);
+
+let searchTimer;
+document.getElementById('f-search').addEventListener('input', function () {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(applyFilters, 280);
+});
+
+document.getElementById('f-reset').addEventListener('click', function () {
+  document.getElementById('f-type').value = '';
+  document.getElementById('f-search').value = '';
+  applyFilters();
+});
+
+// ── Init ─────────────────────────────────────
+refreshCounts();
+updateEmptyStates();
+</script>
+{% endblock %}

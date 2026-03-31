@@ -1,0 +1,194 @@
+{% extends 'base.html' %}
+{% block title %}Report Incident — Smart City{% endblock %}
+
+{% block extra_css %}
+<style>
+  .report-wrap { max-width: 1080px; margin: 0 auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 page-wrap">
+  <div class="report-wrap">
+
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Report an Incident</h1>
+        <p class="page-subtitle">Submit a civic issue for municipal review and resolution</p>
+      </div>
+    </div>
+
+    <div class="row g-4">
+
+      <!-- Form -->
+      <div class="col-lg-5">
+        <div class="card">
+          <div class="card-header">
+            <i class="bi bi-clipboard-plus" style="color:var(--blue);"></i>Incident Details
+          </div>
+          <div class="card-body">
+            <form method="post" enctype="multipart/form-data" id="report-form" novalidate>
+              {% csrf_token %}
+              {{ form.latitude }}
+              {{ form.longitude }}
+
+              <div class="row g-3 mb-3">
+                <div class="col-sm-6">
+                  <label class="form-label">Issue Type</label>
+                  {{ form.incident_type }}
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">Priority</label>
+                  {{ form.priority }}
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Title</label>
+                {{ form.title }}
+                {% if form.title.errors %}
+                  <div style="font-size:12px;color:var(--red);margin-top:5px;display:flex;align-items:center;gap:4px;">
+                    <i class="bi bi-exclamation-circle"></i>{{ form.title.errors|join:', ' }}
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label">Description</label>
+                {{ form.description }}
+                {% if form.description.errors %}
+                  <div style="font-size:12px;color:var(--red);margin-top:5px;display:flex;align-items:center;gap:4px;">
+                    <i class="bi bi-exclamation-circle"></i>{{ form.description.errors|join:', ' }}
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="row g-3 mb-3">
+                <div class="col-sm-7">
+                  <label class="form-label">Address</label>
+                  {{ form.address }}
+                </div>
+                <div class="col-sm-5">
+                  <label class="form-label">Area / Ward</label>
+                  {{ form.area }}
+                </div>
+              </div>
+
+              <div class="mb-4">
+                <label class="form-label">
+                  Photo
+                  <span style="font-size:12px;color:var(--text-2);font-weight:400;">(optional)</span>
+                </label>
+                {{ form.image }}
+                <div id="img-preview" class="mt-2"></div>
+              </div>
+
+              {% if form.latitude.errors or form.longitude.errors %}
+                <div class="alert alert-danger" style="font-size:13px;">
+                  <i class="bi bi-exclamation-triangle me-1"></i>Click on the map to set the incident location.
+                </div>
+              {% endif %}
+
+              <div id="location-pill" style="display:none;background:var(--green-bg);border:1px solid var(--green-100);border-radius:var(--r);padding:9px 13px;font-size:12.5px;color:var(--green);margin-bottom:16px;align-items:center;gap:6px;">
+                <i class="bi bi-pin-map-fill"></i>
+                <span>Location pinned: <span id="lat-display"></span>, <span id="lng-display"></span></span>
+              </div>
+
+              <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">
+                  <i class="bi bi-send-fill"></i>Submit Report
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Map -->
+      <div class="col-lg-7">
+        <div style="font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+          <i class="bi bi-geo-alt-fill" style="color:var(--red);"></i>
+          <span id="map-hint-text">Click on the map to pin the incident location</span>
+        </div>
+        <div id="report-map" style="height:420px;width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.07);"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const map = L.map('report-map').setView([20.5937, 78.9629], 5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19
+}).addTo(map);
+setTimeout(() => map.invalidateSize(), 100);
+
+let marker = null;
+
+map.on('click', function (e) {
+  const lat = e.latlng.lat.toFixed(6);
+  const lng = e.latlng.lng.toFixed(6);
+
+  document.getElementById('id_latitude').value  = lat;
+  document.getElementById('id_longitude').value = lng;
+  document.getElementById('lat-display').textContent = lat;
+  document.getElementById('lng-display').textContent = lng;
+
+  const pill = document.getElementById('location-pill');
+  pill.style.display = 'flex';
+
+  document.getElementById('map-hint-text').innerHTML =
+    '<i class="bi bi-check-circle-fill" style="color:var(--green);margin-right:5px;"></i>Location pinned — click again to adjust';
+
+  if (marker) map.removeLayer(marker);
+  marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+
+  marker.on('dragend', function () {
+    const p = marker.getLatLng();
+    document.getElementById('id_latitude').value  = p.lat.toFixed(6);
+    document.getElementById('id_longitude').value = p.lng.toFixed(6);
+    document.getElementById('lat-display').textContent = p.lat.toFixed(6);
+    document.getElementById('lng-display').textContent = p.lng.toFixed(6);
+    reverseGeocode(p.lat, p.lng);
+  });
+
+  reverseGeocode(lat, lng);
+});
+
+function reverseGeocode(lat, lng) {
+  fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.display_name) {
+        document.getElementById('id_address').value = d.display_name;
+        const a = d.address || {};
+        const area = a.suburb || a.city_district || a.city || a.town || a.village || '';
+        if (area) document.getElementById('id_area').value = area;
+      }
+    }).catch(() => {});
+}
+
+document.getElementById('id_image').addEventListener('change', function () {
+  const f = this.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = e => {
+    document.getElementById('img-preview').innerHTML =
+      `<img src="${e.target.result}" style="max-height:120px;border-radius:var(--r);border:1px solid var(--border);">`;
+  };
+  r.readAsDataURL(f);
+});
+
+document.getElementById('report-form').addEventListener('submit', function (e) {
+  if (!document.getElementById('id_latitude').value) {
+    e.preventDefault();
+    alert('Please click the map to set the incident location before submitting.');
+  }
+});
+</script>
+{% endblock %}

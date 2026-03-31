@@ -1,0 +1,8 @@
+django>=4.2
+channels[daphne]
+channels-redis
+psycopg2-binary
+pillow
+python-dotenv
+redis
+whitenoise

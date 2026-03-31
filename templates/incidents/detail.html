@@ -1,0 +1,195 @@
+{% extends 'base.html' %}
+{% block title %}{{ incident.tracking_id }} — Smart City{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 page-wrap">
+
+  <nav aria-label="breadcrumb" style="margin-bottom:20px;">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+      <li class="breadcrumb-item"><a href="/my-incidents/">Reports</a></li>
+      <li class="breadcrumb-item active">{{ incident.tracking_id }}</li>
+    </ol>
+  </nav>
+
+  <div class="row g-4">
+
+    <!-- Left column -->
+    <div class="col-lg-7">
+
+      <!-- Main card -->
+      <div class="card mb-3">
+        <div class="card-header" style="padding:16px 20px;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;width:100%;">
+            <div>
+              <h2 style="font-size:18px;font-weight:700;margin:0 0 5px;letter-spacing:-.3px;color:var(--text);">{{ incident.title }}</h2>
+              <code>{{ incident.tracking_id }}</code>
+            </div>
+            <span class="badge status-{{ incident.status|lower }}" style="font-size:12px;padding:5px 10px;flex-shrink:0;margin-top:2px;">
+              {{ incident.get_status_display }}
+            </span>
+          </div>
+        </div>
+        <div class="card-body">
+
+          <!-- Meta grid -->
+          <div class="row g-2 mb-4">
+            <div class="col-6 col-md-3">
+              <div style="background:var(--n-50);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;text-align:center;">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);font-weight:600;margin-bottom:4px;">Type</div>
+                <div style="font-size:13px;font-weight:600;">{{ incident.get_incident_type_display }}</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div style="background:var(--n-50);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;text-align:center;">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);font-weight:600;margin-bottom:4px;">Priority</div>
+                <span class="badge priority-{{ incident.priority|lower }}">{{ incident.get_priority_display }}</span>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div style="background:var(--n-50);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;text-align:center;">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);font-weight:600;margin-bottom:4px;">Department</div>
+                <div style="font-size:13px;font-weight:600;">{{ incident.department.name|default:"—" }}</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div style="background:var(--n-50);border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;text-align:center;">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);font-weight:600;margin-bottom:4px;">Reporter</div>
+                <div style="font-size:13px;font-weight:600;">{{ incident.reported_by.username }}</div>
+              </div>
+            </div>
+          </div>
+
+          <p style="font-size:14px;line-height:1.75;color:var(--text);margin-bottom:16px;">{{ incident.description }}</p>
+
+          {% if incident.address %}
+            <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-2);margin-bottom:5px;">
+              <i class="bi bi-geo-alt-fill" style="color:var(--red);font-size:12px;flex-shrink:0;"></i>
+              {{ incident.address }}
+            </div>
+          {% endif %}
+          {% if incident.area %}
+            <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-2);margin-bottom:5px;">
+              <i class="bi bi-map" style="color:var(--text-3);font-size:12px;flex-shrink:0;"></i>
+              {{ incident.area }}
+            </div>
+          {% endif %}
+
+          <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+            <span style="font-size:12px;color:var(--text-2);">
+              <i class="bi bi-calendar3 me-1"></i>Reported {{ incident.created_at|date:"d M Y, H:i" }}
+            </span>
+            {% if incident.deadline %}
+              <span style="font-size:12px;" class="{% if incident.is_overdue %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+                <i class="bi bi-clock me-1"></i>Deadline {{ incident.deadline|date:"d M Y, H:i" }}
+                {% if incident.is_overdue %}
+                  <span class="badge status-escalated ms-1">Overdue</span>
+                {% endif %}
+              </span>
+            {% endif %}
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Photo -->
+      {% if incident.image %}
+        <div class="card mb-3">
+          <div class="card-header">
+            <i class="bi bi-image" style="color:var(--text-2);"></i>Photo Evidence
+          </div>
+          <div class="card-body p-2">
+            <img src="{{ incident.image.url }}" class="img-fluid"
+              style="max-height:320px;width:100%;object-fit:cover;border-radius:var(--r-md);" alt="Incident photo">
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Status update form (admin / worker only) -->
+      {% if status_form %}
+        <div class="card" style="border-color:#fde68a;">
+          <div class="card-header" style="background:var(--yellow-bg);border-bottom-color:#fde68a;">
+            <i class="bi bi-pencil-square" style="color:var(--yellow);"></i>Update Status
+          </div>
+          <div class="card-body">
+            <form method="post" novalidate>
+              {% csrf_token %}
+              <div class="row g-2 align-items-end">
+                <div class="col-sm-4">
+                  <label class="form-label">New Status</label>
+                  {{ status_form.status }}
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label">
+                    Note <span style="font-size:12px;color:var(--text-2);font-weight:400;">(optional)</span>
+                  </label>
+                  {{ status_form.note }}
+                </div>
+                <div class="col-sm-2">
+                  <button type="submit" class="btn btn-warning w-100">
+                    <i class="bi bi-check-lg"></i>Update
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      {% endif %}
+
+    </div>
+
+    <!-- Right column: map + timeline -->
+    <div class="col-lg-5">
+
+      <div class="card mb-3">
+        <div class="card-header">
+          <i class="bi bi-map" style="color:var(--text-2);"></i>Location
+        </div>
+        <div class="card-body p-2">
+          <div id="detail-map"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <i class="bi bi-clock-history" style="color:var(--text-2);"></i>Status Timeline
+        </div>
+        <div class="card-body">
+          <div class="sc-timeline">
+            {% for update in incident.status_updates.all %}
+              <div class="sc-timeline-item">
+                <span class="badge status-{{ update.status|lower }}">{{ update.get_status_display }}</span>
+                {% if update.note %}
+                  <p style="font-size:13px;color:var(--text-2);margin:5px 0 3px;line-height:1.55;">{{ update.note }}</p>
+                {% endif %}
+                <div style="font-size:11.5px;color:var(--text-3);margin-top:3px;">
+                  {{ update.timestamp|date:"d M Y, H:i" }}
+                  {% if update.updated_by %} · {{ update.updated_by.username }}{% endif %}
+                </div>
+              </div>
+            {% empty %}
+              <p style="font-size:13.5px;color:var(--text-2);margin:0;">No status updates yet.</p>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const lat = {{ incident.latitude }};
+const lng = {{ incident.longitude }};
+const map = L.map('detail-map').setView([lat, lng], 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19
+}).addTo(map);
+L.marker([lat, lng]).addTo(map)
+  .bindPopup('<strong>{{ incident.title|escapejs }}</strong><br><small>{{ incident.get_incident_type_display|escapejs }}</small>')
+  .openPopup();
+</script>
+{% endblock %}

@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+{% block title %}Live Dashboard — Smart City{% endblock %}
+
+{% block extra_css %}
+<style>
+  body { overflow: hidden; }
+  .map-shell { display: grid; grid-template-columns: 300px 1fr; height: calc(100vh - 60px); overflow: hidden; }
+  .map-sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  #incident-list { overflow-y: auto; flex: 1; }
+  #main-map { height: 100%; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="map-shell">
+
+  <!-- Sidebar -->
+  <div class="map-sidebar">
+
+    <!-- Filters (sticky) -->
+    <div class="sidebar-filters">
+      <div style="font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:10px;">Filter</div>
+      <select id="filter-status" class="form-select form-select-sm mb-2">
+        <option value="">All Statuses</option>
+        {% for code, label in status_choices %}
+          <option value="{{ code }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select id="filter-type" class="form-select form-select-sm mb-2">
+        <option value="">All Types</option>
+        {% for code, label in type_choices %}
+          <option value="{{ code }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" id="filter-q" class="form-control form-control-sm" placeholder="Search title, ID…">
+    </div>
+
+    <!-- Stats bar -->
+    <div class="sidebar-stats">
+      <div class="sidebar-stat">
+        <div class="sidebar-stat-value" style="color:var(--blue);">{{ total }}</div>
+        <div class="sidebar-stat-label">Total</div>
+      </div>
+      <div class="sidebar-stat">
+        <div class="sidebar-stat-value" style="color:var(--green);">{{ resolved }}</div>
+        <div class="sidebar-stat-label">Resolved</div>
+      </div>
+      <div class="sidebar-stat">
+        <div class="sidebar-stat-value" style="color:var(--orange);">{{ pending }}</div>
+        <div class="sidebar-stat-label">Pending</div>
+      </div>
+    </div>
+
+    <!-- Incident list -->
+    <div id="incident-list">
+      <div style="padding:40px 16px;text-align:center;">
+        <div class="spinner-border spinner-border-sm text-primary" style="width:18px;height:18px;"></div>
+        <p style="font-size:13px;color:var(--text-2);margin:12px 0 0;">Loading…</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Map -->
+  <div id="main-map"></div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/map.js"></script>
+<script>
+const STATUS_COLORS = {
+  SUBMITTED:'#2563eb', ASSIGNED:'#ca8a04', IN_PROGRESS:'#c2410c',
+  RESOLVED:'#16a34a', CLOSED:'#64748b', ESCALATED:'#7c3aed'
+};
+const TYPE_ICONS = {
+  POTHOLE:'🕳️', GARBAGE:'🗑️', STREETLIGHT:'💡', WATER_LEAK:'💧', TRAFFIC:'🚦'
+};
+
+const map = L.map('main-map', { zoomControl: false }).setView([20.5937, 78.9629], 5);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19
+}).addTo(map);
+
+let markers = {};
+
+function coloredIcon(color, emoji) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="background:${color};width:32px;height:32px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;"><span style="transform:rotate(45deg);font-size:14px;">${emoji}</span></div>`,
+    iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -36]
+  });
+}
+
+function loadIncidents() {
+  const params = new URLSearchParams({
+    status: $('#filter-status').val(),
+    type:   $('#filter-type').val(),
+    q:      $('#filter-q').val(),
+  });
+  $.get('/api/incidents/?' + params.toString(), function (data) {
+    Object.values(markers).forEach(m => map.removeLayer(m));
+    markers = {};
+    let html = '';
+
+    data.incidents.forEach(inc => {
+      const color = STATUS_COLORS[inc.status] || '#888';
+      const emoji = TYPE_ICONS[inc.incident_type] || '📍';
+      const m = L.marker([inc.latitude, inc.longitude], { icon: coloredIcon(color, emoji) }).addTo(map);
+      m.bindPopup(`
+        <div style="font-family:Inter,sans-serif;min-width:190px;padding:2px 0;">
+          <div style="font-size:13px;font-weight:600;color:#0f172a;margin-bottom:8px;line-height:1.35;">${inc.title}</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">
+            <span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:3px;background:${color}20;color:${color};">${inc.status_display}</span>
+            <span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:3px;background:#f1f5f9;color:#475569;">${inc.priority_display}</span>
+          </div>
+          <div style="font-size:12px;color:#64748b;margin-bottom:3px;">${inc.incident_type_display} · ${inc.department}</div>
+          ${inc.address ? `<div style="font-size:11.5px;color:#94a3b8;margin-bottom:8px;">${inc.address}</div>` : ''}
+          <a href="/incidents/${inc.id}/" style="font-size:12.5px;color:#2563eb;font-weight:500;text-decoration:none;">View details →</a>
+        </div>`);
+      markers[inc.id] = m;
+
+      html += `
+        <div class="inc-item" onclick="focusIncident(${inc.id},${inc.latitude},${inc.longitude})">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+            <div style="min-width:0;">
+              <div class="inc-item-title">${inc.title}</div>
+              <div class="inc-item-meta">${inc.tracking_id}${inc.area ? ' · ' + inc.area : ''}</div>
+            </div>
+            <span class="badge status-${inc.status.toLowerCase()} flex-shrink-0">${inc.status_display}</span>
+          </div>
+        </div>`;
+    });
+
+    $('#incident-list').html(html || `
+      <div class="empty-state">
+        <div class="empty-icon"><i class="bi bi-search"></i></div>
+        <div class="empty-title">No incidents found</div>
+        <div class="empty-body">Try adjusting your search or filters.</div>
+      </div>`);
+
+    // Auto-zoom to fit all markers
+    const all = Object.values(markers);
+    if (all.length === 1) {
+      map.setView(all[0].getLatLng(), 14);
+    } else if (all.length > 1) {
+      map.fitBounds(L.featureGroup(all).getBounds().pad(0.25), { maxZoom: 14 });
+    }
+  });
+}
+
+function focusIncident(id, lat, lng) {
+  map.flyTo([lat, lng], 16, { duration: 1 });
+  if (markers[id]) markers[id].openPopup();
+}
+
+let filterTimer;
+$('#filter-status, #filter-type').on('change', loadIncidents);
+$('#filter-q').on('input', function () {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(loadIncidents, 350);
+});
+
+loadIncidents();
+window.onIncidentUpdate = function () { loadIncidents(); };
+</script>
+{% endblock %}
