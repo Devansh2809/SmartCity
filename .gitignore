@@ -1,4 +1,6 @@
+.env
 .env*
+.gitignore
 pycache/
 *.pyc
 *.pyo
