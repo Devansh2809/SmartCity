@@ -4,7 +4,7 @@
   <script>(function(){var t=localStorage.getItem('scTheme');if(t)document.documentElement.setAttribute('data-bs-theme',t);})();</script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Smart City — Incident Reporting{% endblock %}</title>
+  <title>{% block title %}Incident Reporting{% endblock %}</title>
   <meta name="description" content="Smart City Incident Reporting System — Report and track civic infrastructure issues in real time.">
 
   <!-- Inter font -->
@@ -44,27 +44,31 @@
         <li class="nav-item">
           <a class="nav-link" href="/"><i class="bi bi-map"></i>Dashboard</a>
         </li>
-        <li class="nav-item">
-          <a class="nav-link" href="/analytics/"><i class="bi bi-bar-chart-line"></i>Analytics</a>
-        </li>
+        {% if user.is_authenticated and user.role != 'citizen' %}
+  <li class="nav-item">
+    <a class="nav-link" href="/analytics/"><i class="bi bi-bar-chart-line"></i>Analytics</a>
+  </li>
+{% endif %}
         {% if user.is_authenticated %}
-          <li class="nav-item">
-            <a class="nav-link" href="/report/"><i class="bi bi-plus-circle"></i>Report Issue</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="/my-incidents/"><i class="bi bi-list-ul"></i>My Reports</a>
-          </li>
-          {% if user.role == 'admin' %}
-            <li class="nav-item">
-              <a class="nav-link" href="/admin-panel/"><i class="bi bi-shield-check"></i>Admin Panel</a>
-            </li>
-          {% endif %}
-          {% if user.role == 'worker' %}
-            <li class="nav-item">
-              <a class="nav-link" href="/worker-panel/"><i class="bi bi-tools"></i>My Tasks</a>
-            </li>
-          {% endif %}
-        {% endif %}
+  {% if user.role != 'admin' %}
+    <li class="nav-item">
+      <a class="nav-link" href="/report/"><i class="bi bi-plus-circle"></i>Report Issue</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="/my-incidents/"><i class="bi bi-list-ul"></i>My Reports</a>
+    </li>
+  {% endif %}
+  {% if user.role == 'admin' %}
+    <li class="nav-item">
+      <a class="nav-link" href="/admin-panel/"><i class="bi bi-shield-check"></i>Admin Panel</a>
+    </li>
+  {% endif %}
+  {% if user.role == 'worker' %}
+    <li class="nav-item">
+      <a class="nav-link" href="/worker-panel/"><i class="bi bi-tools"></i>My Tasks</a>
+    </li>
+  {% endif %}
+{% endif %}
       </ul>
 
       <div class="d-flex align-items-center gap-2">

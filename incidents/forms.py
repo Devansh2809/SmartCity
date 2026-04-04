@@ -33,6 +33,23 @@ class IncidentForm(forms.ModelForm):
             }),
             'image': forms.FileInput(attrs={'class': 'form-control', 'accept': 'image/*'}),
         }
+    def clean(self):
+        cleaned_data = super().clean()
+        lat = cleaned_data.get('latitude')
+        lng = cleaned_data.get('longitude')
+
+        if lat is None or lng is None:
+            raise forms.ValidationError(
+                'Location is required. Use "Use My Current Location" or click on the map.'
+            )
+
+        if lat < -90 or lat > 90:
+            self.add_error('latitude', 'Latitude must be between -90 and 90.')
+
+        if lng < -180 or lng > 180:
+            self.add_error('longitude', 'Longitude must be between -180 and 180.')
+
+        return cleaned_data
 
 
 class StatusUpdateForm(forms.ModelForm):

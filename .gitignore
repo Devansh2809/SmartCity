@@ -1,7 +1,7 @@
 .env
 .env*
-.gitignore
 pycache/
+__pycache__/
 *.pyc
 *.pyo
 *.sqlite3

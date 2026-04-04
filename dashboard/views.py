@@ -6,7 +6,7 @@ from django.db.models.functions import TruncDate
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from datetime import timedelta
-
+from django.db.models import Case, Count, IntegerField, When
 from incidents.models import Incident
 
 
@@ -28,9 +28,21 @@ def admin_panel(request):
     if not request.user.is_admin_user():
         return redirect('public_dashboard')
 
-    incidents = Incident.objects.select_related(
-        'department', 'reported_by', 'assigned_to'
-    ).order_by('-created_at')
+    priority_rank = Case(
+    When(priority='EMERGENCY', then=0),
+    When(priority='HIGH', then=1),
+    When(priority='MEDIUM', then=2),
+    When(priority='LOW', then=3),
+    default=4,
+    output_field=IntegerField(),
+    )
+
+    incidents = (
+        Incident.objects
+        .select_related('department', 'reported_by', 'assigned_to')
+        .annotate(priority_rank=priority_rank)
+        .order_by('priority_rank', 'deadline', '-created_at')
+    )
 
     status_filter = request.GET.get('status')
     type_filter = request.GET.get('type')
@@ -56,13 +68,36 @@ def admin_panel(request):
 def worker_panel(request):
     if not request.user.is_worker():
         return redirect('public_dashboard')
-    incidents = Incident.objects.filter(
-        assigned_to=request.user
-    ).select_related('department').order_by('-created_at')
+    priority_rank = Case(
+    When(priority='EMERGENCY', then=0),
+    When(priority='HIGH', then=1),
+    When(priority='MEDIUM', then=2),
+    When(priority='LOW', then=3),
+    default=4,
+    output_field=IntegerField(),
+    )
+
+    incidents = (
+        Incident.objects
+        .filter(assigned_to=request.user)
+        .select_related('department')
+        .annotate(priority_rank=priority_rank)
+        .order_by('priority_rank', 'deadline', '-created_at')
+    )
     return render(request, 'dashboard/worker_panel.html', {'incidents': incidents})
 
 
 def analytics_view(request):
+    if request.user.role == 'citizen':
+        return redirect('public_dashboard')
+
+    by_type = list(Incident.objects.values('incident_type').annotate(count=Count('id')))
+    type_labels = [d['incident_type'] for d in by_type]
+    type_counts = [d['count'] for d in by_type]
+
+    by_status = list(Incident.objects.values('status').annotate(count=Count('id')))
+    status_labels = [d['status'] for d in by_status]
+    status_counts = [d['count'] for d in by_status]
     by_type = list(Incident.objects.values('incident_type').annotate(count=Count('id')))
     type_labels = [d['incident_type'] for d in by_type]
     type_counts = [d['count'] for d in by_type]

@@ -1,6 +1,6 @@
 import uuid
 from datetime import timedelta
-
+from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -51,10 +51,10 @@ class Incident(models.Model):
     ]
 
     DEADLINE_HOURS = {
-        'EMERGENCY': 4,
-        'HIGH': 24,
-        'MEDIUM': 72,
-        'LOW': 168,
+    'EMERGENCY': 2,
+    'HIGH': 24,
+    'MEDIUM': 72,
+    'LOW': 168,
     }
 
     tracking_id = models.CharField(max_length=20, unique=True, editable=False)
@@ -98,17 +98,48 @@ class Incident(models.Model):
         ordering = ['-created_at']
 
     def save(self, *args, **kwargs):
+        is_create = self._state.adding
+        old_priority = None
+
+        if not is_create:
+            old_priority = (
+                Incident.objects
+                .filter(pk=self.pk)
+                .values_list('priority', flat=True)
+                .first()
+            )
+
         if not self.tracking_id:
             self.tracking_id = 'INC-' + str(uuid.uuid4()).upper().replace('-', '')[:8]
+
+        # Department routing by incident type
         if not self.department_id:
             dept_code = DEPT_ROUTING.get(self.incident_type, 'PUBLIC_WORKS')
-            try:
-                self.department = Department.objects.get(code=dept_code)
-            except Department.DoesNotExist:
-                pass
-        if not self.deadline:
+            self.department = Department.objects.filter(code=dept_code).first()
+
+        # SLA deadline by priority (recompute when priority changes)
+        priority_changed = old_priority is not None and old_priority != self.priority
+        if not self.deadline or (
+            priority_changed and self.status not in ('RESOLVED', 'CLOSED', 'ESCALATED')
+        ):
             hours = self.DEADLINE_HOURS.get(self.priority, 72)
-            self.deadline = timezone.now() + timedelta(hours=hours)
+            base_time = self.created_at or timezone.now()
+            self.deadline = base_time + timedelta(hours=hours)
+
+        # Emergency complaints: fast routing to department worker
+        if self.priority == 'EMERGENCY' and not self.assigned_to_id and self.department_id:
+            User = get_user_model()
+            worker = (
+                User.objects
+                .filter(role='worker', department=self.department, is_active=True)
+                .order_by('-last_login', 'date_joined')
+                .first()
+            )
+            if worker:
+                self.assigned_to = worker
+                if self.status == 'SUBMITTED':
+                    self.status = 'ASSIGNED'
+
         super().save(*args, **kwargs)
 
     def __str__(self):

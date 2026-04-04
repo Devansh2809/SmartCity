@@ -26,13 +26,18 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         created = 0
+        updated = 0
+
         for dept_data in DEPARTMENTS:
-            _, was_created = Department.objects.get_or_create(
+            _, was_created = Department.objects.update_or_create(
                 code=dept_data['code'],
                 defaults=dept_data,
             )
             if was_created:
                 created += 1
+            else:
+                updated += 1
+
         self.stdout.write(self.style.SUCCESS(
-            f'Done. {created} department(s) created, {len(DEPARTMENTS) - created} already existed.'
+            f'Done. {created} created, {updated} updated.'
         ))

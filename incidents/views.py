@@ -11,19 +11,35 @@ from django.views.decorators.http import require_POST
 from .forms import IncidentForm, StatusUpdateForm
 from .models import Incident, StatusUpdate
 
-
+from django.db.models import Case, IntegerField, Q, When
 @login_required
 def report_view(request):
+    if request.user.is_admin_user():
+        messages.info(request, 'Admins cannot submit incidents.')
+        return redirect('admin_panel')
     if request.method == 'POST':
         form = IncidentForm(request.POST, request.FILES)
         if form.is_valid():
             incident = form.save(commit=False)
             incident.reported_by = request.user
             incident.save()
+            initial_status = incident.status
+            if initial_status == 'ASSIGNED' and incident.assigned_to:
+                dept_name = incident.department.name if incident.department else 'department queue'
+                note = (
+                    f'Incident reported by citizen. '
+                    f'Auto-routed to {dept_name} and assigned to {incident.assigned_to.username} '
+                    f'due to emergency priority.'
+                )
+            elif initial_status == 'ASSIGNED':
+                note = 'Incident reported by citizen. Auto-routed due to emergency priority.'
+            else:
+                note = 'Incident reported by citizen.'
+
             StatusUpdate.objects.create(
                 incident=incident,
-                status='SUBMITTED',
-                note='Incident reported by citizen.',
+                status=initial_status,
+                note=note,
                 updated_by=request.user,
             )
             messages.success(request, f'Incident {incident.tracking_id} submitted successfully!')
@@ -68,12 +84,29 @@ def incident_detail_view(request, pk):
 
 @login_required
 def my_incidents_view(request):
+    if request.user.is_admin_user():
+        messages.info(request, 'Admins do not have a personal reports list.')
+        return redirect('admin_panel')
     incidents = Incident.objects.filter(reported_by=request.user).select_related('department')
     return render(request, 'incidents/my_incidents.html', {'incidents': incidents})
 
 
 def incidents_api(request):
-    qs = Incident.objects.select_related('department', 'reported_by')
+    priority_rank = Case(
+    When(priority='EMERGENCY', then=0),
+    When(priority='HIGH', then=1),
+    When(priority='MEDIUM', then=2),
+    When(priority='LOW', then=3),
+    default=4,
+    output_field=IntegerField(),
+    )
+
+    qs = (
+        Incident.objects
+        .select_related('department', 'reported_by')
+        .annotate(priority_rank=priority_rank)
+        .order_by('priority_rank', 'deadline', '-created_at')
+    )
 
     status_filter = request.GET.get('status')
     type_filter = request.GET.get('type')

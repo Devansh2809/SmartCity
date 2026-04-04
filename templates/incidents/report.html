@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Report Incident — Smart City{% endblock %}
+{% block title %}Report Incident{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -107,9 +107,16 @@
 
       <!-- Map -->
       <div class="col-lg-7">
-        <div style="font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+          <div style="font-size:13px;font-weight:600;color:var(--text-2);display:flex;align-items:center;gap:6px;">
           <i class="bi bi-geo-alt-fill" style="color:var(--red);"></i>
-          <span id="map-hint-text">Click on the map to pin the incident location</span>
+          <span id="map-hint-text">Detect your location automatically or click on the map to pin it</span>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="detect-location-btn"> Current Location </button> </div>
+          <div id="gps-status" style="display:none;border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;font-size:12.5px;margin-bottom:8px;"></div>
+          <div id="report-map" style="height:420px;width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.07);"></div> </div>
+
+<div id="gps-status" style="display:none;border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;font-size:12.5px;margin-bottom:8px;"></div>
         </div>
         <div id="report-map" style="height:420px;width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.07);"></div>
       </div>
@@ -128,50 +135,139 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 setTimeout(() => map.invalidateSize(), 100);
 
+const latInput = document.getElementById('id_latitude');
+const lngInput = document.getElementById('id_longitude');
+const addressInput = document.getElementById('id_address');
+const areaInput = document.getElementById('id_area');
+const latDisplay = document.getElementById('lat-display');
+const lngDisplay = document.getElementById('lng-display');
+const locationPill = document.getElementById('location-pill');
+const mapHintText = document.getElementById('map-hint-text');
+const gpsStatus = document.getElementById('gps-status');
+const detectBtn = document.getElementById('detect-location-btn');
+const reportForm = document.getElementById('report-form');
+
 let marker = null;
 
-map.on('click', function (e) {
-  const lat = e.latlng.lat.toFixed(6);
-  const lng = e.latlng.lng.toFixed(6);
+function showGpsStatus(message, tone) {
+  const tones = {
+    info:    { bg: 'var(--blue-bg)', border: 'var(--blue-100)', text: 'var(--blue)' },
+    success: { bg: 'var(--green-bg)', border: 'var(--green-100)', text: 'var(--green)' },
+    warn:    { bg: 'var(--yellow-bg)', border: '#fde68a', text: '#92400e' },
+    error:   { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c' }
+  };
+  const t = tones[tone] || tones.info;
+  gpsStatus.style.display = 'block';
+  gpsStatus.style.background = t.bg;
+  gpsStatus.style.borderColor = t.border;
+  gpsStatus.style.color = t.text;
+  gpsStatus.textContent = message;
+}
 
-  document.getElementById('id_latitude').value  = lat;
-  document.getElementById('id_longitude').value = lng;
-  document.getElementById('lat-display').textContent = lat;
-  document.getElementById('lng-display').textContent = lng;
+function setDetectButtonLoading(isLoading) {
+  detectBtn.disabled = isLoading;
+  detectBtn.innerHTML = isLoading
+    ? '<span class="spinner-border spinner-border-sm" style="width:13px;height:13px;margin-right:6px;"></span>Detecting...'
+    : 'Use My Current Location';
+}
 
-  const pill = document.getElementById('location-pill');
-  pill.style.display = 'flex';
+function pinLocation(lat, lng, source, accuracyMeters) {
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+  if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return;
 
-  document.getElementById('map-hint-text').innerHTML =
-    '<i class="bi bi-check-circle-fill" style="color:var(--green);margin-right:5px;"></i>Location pinned — click again to adjust';
+  const latFixed = latNum.toFixed(6);
+  const lngFixed = lngNum.toFixed(6);
 
-  if (marker) map.removeLayer(marker);
-  marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+  latInput.value = latFixed;
+  lngInput.value = lngFixed;
+  latDisplay.textContent = latFixed;
+  lngDisplay.textContent = lngFixed;
+  locationPill.style.display = 'flex';
 
-  marker.on('dragend', function () {
-    const p = marker.getLatLng();
-    document.getElementById('id_latitude').value  = p.lat.toFixed(6);
-    document.getElementById('id_longitude').value = p.lng.toFixed(6);
-    document.getElementById('lat-display').textContent = p.lat.toFixed(6);
-    document.getElementById('lng-display').textContent = p.lng.toFixed(6);
-    reverseGeocode(p.lat, p.lng);
-  });
+  if (!marker) {
+    marker = L.marker([latNum, lngNum], { draggable: true }).addTo(map);
+    marker.on('dragend', function () {
+      const p = marker.getLatLng();
+      pinLocation(p.lat, p.lng, 'drag');
+    });
+  } else {
+    marker.setLatLng([latNum, lngNum]);
+  }
 
-  reverseGeocode(lat, lng);
-});
+  map.setView([latNum, lngNum], Math.max(map.getZoom(), 16), { animate: true });
+
+  if (source === 'gps') {
+    const accText = Number.isFinite(accuracyMeters) ? ' (accuracy ± ' + Math.round(accuracyMeters) + ' m)' : '';
+    mapHintText.innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--green);margin-right:5px;"></i>GPS location pinned';
+    showGpsStatus('Location captured from your device' + accText + '. You can drag the marker to exact position.', 'success');
+  } else if (source === 'map') {
+    mapHintText.innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--green);margin-right:5px;"></i>Location pinned from map';
+    showGpsStatus('Location pinned from map. You can drag the marker to exact position.', 'info');
+  } else if (source === 'drag') {
+    showGpsStatus('Marker moved. Location updated.', 'info');
+  }
+
+  reverseGeocode(latFixed, lngFixed);
+}
 
 function reverseGeocode(lat, lng) {
-  fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
+  fetch('https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lng + '&format=json')
     .then(r => r.json())
     .then(d => {
-      if (d.display_name) {
-        document.getElementById('id_address').value = d.display_name;
-        const a = d.address || {};
-        const area = a.suburb || a.city_district || a.city || a.town || a.village || '';
-        if (area) document.getElementById('id_area').value = area;
-      }
-    }).catch(() => {});
+      if (!d || !d.display_name) return;
+      addressInput.value = d.display_name;
+      const a = d.address || {};
+      const area = a.suburb || a.city_district || a.city || a.town || a.village || '';
+      if (area) areaInput.value = area;
+    })
+    .catch(() => {});
 }
+
+function geolocationErrorText(error) {
+  if (!error) return 'Unable to detect location.';
+  if (error.code === 1) return 'Location permission denied. Please allow access or click on the map.';
+  if (error.code === 2) return 'Location unavailable right now. Try again or click on the map.';
+  if (error.code === 3) return 'Location request timed out. Try again or click on the map.';
+  return 'Unable to detect location. Please click on the map.';
+}
+
+function detectCurrentLocation(isAuto) {
+  if (!navigator.geolocation) {
+    showGpsStatus('This browser does not support geolocation. Please click on the map.', 'warn');
+    return;
+  }
+
+  setDetectButtonLoading(true);
+  if (!isAuto) {
+    showGpsStatus('Detecting your current location...', 'info');
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    function (position) {
+      const c = position.coords;
+      pinLocation(c.latitude, c.longitude, 'gps', c.accuracy);
+      setDetectButtonLoading(false);
+    },
+    function (error) {
+      setDetectButtonLoading(false);
+      showGpsStatus(geolocationErrorText(error), isAuto ? 'warn' : 'error');
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 30000
+    }
+  );
+}
+
+map.on('click', function (e) {
+  pinLocation(e.latlng.lat, e.latlng.lng, 'map');
+});
+
+detectBtn.addEventListener('click', function () {
+  detectCurrentLocation(false);
+});
 
 document.getElementById('id_image').addEventListener('change', function () {
   const f = this.files[0];
@@ -179,16 +275,20 @@ document.getElementById('id_image').addEventListener('change', function () {
   const r = new FileReader();
   r.onload = e => {
     document.getElementById('img-preview').innerHTML =
-      `<img src="${e.target.result}" style="max-height:120px;border-radius:var(--r);border:1px solid var(--border);">`;
+      '<img src="' + e.target.result + '" style="max-height:120px;border-radius:var(--r);border:1px solid var(--border);">';
   };
   r.readAsDataURL(f);
 });
 
-document.getElementById('report-form').addEventListener('submit', function (e) {
-  if (!document.getElementById('id_latitude').value) {
+reportForm.addEventListener('submit', function (e) {
+  if (!latInput.value || !lngInput.value) {
     e.preventDefault();
-    alert('Please click the map to set the incident location before submitting.');
+    alert('Please set location first using GPS or by clicking on the map.');
   }
 });
+
+setTimeout(function () {
+  detectCurrentLocation(true);
+}, 600);
 </script>
 {% endblock %}
