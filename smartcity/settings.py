@@ -10,8 +10,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-&$avk7g=#vw+mk@^&llgag8wi(
 
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['*']
-
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "smartcity-vxqp.onrender.com").split(",")
 SECURE_REFERRER_POLICY = 'no-referrer-when-downgrade'
 
 INSTALLED_APPS = [
@@ -58,7 +57,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'smartcity.wsgi.application'
 ASGI_APPLICATION = 'smartcity.asgi.application'
-
+CSRF_TRUSTED_ORIGINS = os.getenv(
+"CSRF_TRUSTED_ORIGINS",
+"https://smartcity-vxqp.onrender.com"
+).split(",")
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
