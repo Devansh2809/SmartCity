@@ -20,6 +20,7 @@ const SCMap = (function () {
     STREETLIGHT: '💡',
     WATER_LEAK: '💧',
     TRAFFIC: '🚦',
+    MISC: '📋',
   };
 
   function coloredIcon(color, emoji) {

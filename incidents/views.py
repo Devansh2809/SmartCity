@@ -163,6 +163,7 @@ def update_status_api(request, pk):
     new_status = body.get('status')
     note = body.get('note', '')
     assigned_to_id = body.get('assigned_to')
+    department_id = body.get('department_id')
 
     valid_statuses = [s[0] for s in Incident.STATUS_CHOICES]
     if new_status not in valid_statuses:
@@ -171,6 +172,15 @@ def update_status_api(request, pk):
     incident.status = new_status
     if new_status == 'RESOLVED':
         incident.resolved_at = timezone.now()
+
+    # Allow admin to manually route MISC (or any unrouted) incident to a department
+    if department_id:
+        from .models import Department
+        try:
+            incident.department = Department.objects.get(pk=department_id)
+        except Department.DoesNotExist:
+            pass
+
     if assigned_to_id:
         from django.contrib.auth import get_user_model
         User = get_user_model()

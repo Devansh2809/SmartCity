@@ -102,6 +102,7 @@
 
   .kb-card:hover { box-shadow: var(--sh-sm); transform: translateY(-1px); }
   .kb-card.overdue { border-left: 3px solid var(--red); }
+  .kb-card.unrouted { border-left: 3px solid #f59e0b; }
 
   .kb-card.moving {
     opacity: .4;
@@ -269,15 +270,25 @@
     {% endfor %}
   </div>
 
+  <!-- Unrouted MISC banner -->
+  {% if unrouted_count %}
+  <div style="display:flex;align-items:center;gap:10px;background:var(--yellow-bg,#fefce8);border:1px solid #fde68a;border-radius:var(--r);padding:10px 14px;margin-bottom:16px;font-size:13px;color:#92400e;">
+    <i class="bi bi-exclamation-triangle-fill" style="font-size:15px;flex-shrink:0;"></i>
+    <span><strong>{{ unrouted_count }} Miscellaneous incident{{ unrouted_count|pluralize }}</strong> waiting for manual department routing.</span>
+    <button class="btn btn-sm ms-auto" style="background:#92400e;color:#fff;font-size:12px;padding:3px 10px;" onclick="document.getElementById('f-type').value='MISC';applyFilters();">Show them</button>
+  </div>
+  {% endif %}
+
   <!-- Filters -->
   <div class="kb-filter-bar">
     <select id="f-type" class="form-select form-select-sm" style="width:160px;">
       <option value="">All Types</option>
       {% for code, label in type_choices %}
-        <option value="{{ code }}">{{ label }}</option>
+        <option value="{{ code }}" {% if selected_type == code %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
-    <input type="text" id="f-search" class="form-control form-control-sm" style="width:220px;" placeholder="Search title or ID…">
+    <input type="text" id="f-area" class="form-control form-control-sm" style="width:160px;" placeholder="Filter by area…" value="{{ selected_area }}">
+    <input type="text" id="f-search" class="form-control form-control-sm" style="width:200px;" placeholder="Search title or ID…">
     <button id="f-reset" class="btn btn-outline-secondary btn-sm">Reset</button>
     <span id="f-count" style="font-size:12.5px;color:var(--text-2);margin-left:auto;"></span>
   </div>
@@ -298,12 +309,14 @@
         <div class="kb-col-body" id="body-{{ status_code }}">
           {% for inc in incidents %}
             {% if inc.status == status_code %}
-              <div class="kb-card {% if inc.is_overdue %}overdue{% endif %}"
+              <div class="kb-card {% if inc.is_overdue %}overdue{% endif %}{% if inc.incident_type == 'MISC' and not inc.department %} unrouted{% endif %}"
                    id="card-{{ inc.pk }}"
                    data-status="{{ inc.status }}"
                    data-type="{{ inc.incident_type }}"
                    data-title="{{ inc.title|lower }}"
-                   data-id="{{ inc.tracking_id|lower }}">
+                   data-id="{{ inc.tracking_id|lower }}"
+                   data-area="{{ inc.area|lower }}"
+                   data-dept="{{ inc.department_id|default:'' }}">
 
                 <!-- Top row: type chip + priority badge -->
                 <div class="kb-card-top">
@@ -349,12 +362,14 @@
                       <option value="{{ code }}" {% if inc.status == code %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                   </select>
-                  <select class="form-select kb-select kb-worker-sel" data-id="{{ inc.pk }}">
-                    <option value="">Assign worker…</option>
-                    {% for w in workers %}
-                      <option value="{{ w.pk }}" {% if inc.assigned_to == w %}selected{% endif %}>{{ w.username }}</option>
+                  {% if inc.incident_type == 'MISC' %}
+                  <select class="form-select kb-select kb-dept-sel" data-id="{{ inc.pk }}" title="Route to department">
+                    <option value="">{% if inc.department %}Change department…{% else %}Route to department…{% endif %}</option>
+                    {% for dept in departments %}
+                      <option value="{{ dept.pk }}" {% if inc.department_id == dept.pk %}selected{% endif %}>{{ dept.name }}</option>
                     {% endfor %}
                   </select>
+                  {% endif %}
                   <div class="kb-btn-row">
                     <button class="btn btn-primary btn-sm kb-apply kb-apply-btn" data-id="{{ inc.pk }}">
                       <i class="bi bi-check-lg"></i> Apply
@@ -391,9 +406,8 @@ const COL_COLORS = {
   SUBMITTED:   '#2563eb',
   ASSIGNED:    '#ca8a04',
   IN_PROGRESS: '#c2410c',
-  RESOLVED:    '#16a34a',
-  CLOSED:      '#64748b',
   ESCALATED:   '#7c3aed',
+  RESOLVED:    '#16a34a',
 };
 
 // Apply accent colors to columns
@@ -446,15 +460,19 @@ document.addEventListener('click', function (e) {
   const btn = e.target.closest('.kb-apply-btn');
   if (!btn) return;
 
-  const id     = btn.dataset.id;
-  const card   = document.getElementById('card-' + id);
-  const status = card.querySelector('.kb-status-sel').value;
-  const worker = card.querySelector('.kb-worker-sel').value;
+  const id      = btn.dataset.id;
+  const card    = document.getElementById('card-' + id);
+  const status  = card.querySelector('.kb-status-sel').value;
+  const deptSel = card.querySelector('.kb-dept-sel');
+  const dept    = deptSel ? deptSel.value : null;
 
   // Loading state
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border" style="width:11px;height:11px;border-width:2px;"></span>';
   card.classList.add('moving');
+
+  const payload = { status: status };
+  if (dept) payload.department_id = dept;
 
   fetch(`/api/incidents/${id}/status/`, {
     method: 'POST',
@@ -462,7 +480,7 @@ document.addEventListener('click', function (e) {
       'Content-Type': 'application/json',
       'X-CSRFToken': getCsrf()
     },
-    body: JSON.stringify({ status: status, assigned_to: worker || null })
+    body: JSON.stringify(payload)
   })
   .then(r => r.json())
   .then(data => {
@@ -499,18 +517,22 @@ document.addEventListener('click', function (e) {
         }, 180);
       }
 
-      // Update worker display if assigned
-      if (worker) {
-        const workerSel = card.querySelector('.kb-worker-sel');
-        const workerName = workerSel.options[workerSel.selectedIndex].text;
-        let workerRow = card.querySelector('.kb-worker-row');
-        if (!workerRow) {
-          workerRow = document.createElement('div');
-          workerRow.className = 'kb-meta-row kb-worker-row';
-          workerRow.innerHTML = '<i class="bi bi-tools"></i><span></span>';
-          card.querySelector('.kb-card-meta').appendChild(workerRow);
+      // Remove unrouted highlight when department is assigned for MISC
+      if (dept) {
+        card.classList.remove('unrouted');
+        card.dataset.dept = dept;
+        const deptSel = card.querySelector('.kb-dept-sel');
+        if (deptSel) {
+          const deptName = deptSel.options[deptSel.selectedIndex].text;
+          let deptRow = card.querySelector('.kb-dept-row');
+          if (!deptRow) {
+            deptRow = document.createElement('div');
+            deptRow.className = 'kb-meta-row kb-dept-row';
+            deptRow.innerHTML = '<i class="bi bi-building"></i><span></span>';
+            card.querySelector('.kb-card-meta').prepend(deptRow);
+          }
+          deptRow.querySelector('span').textContent = deptName;
         }
-        workerRow.querySelector('span').textContent = workerName;
       }
 
       showToast('Incident updated successfully');
@@ -550,15 +572,17 @@ function updateEmptyStates() {
 // ── Filtering ────────────────────────────────
 function applyFilters() {
   const typeVal   = document.getElementById('f-type').value.toLowerCase();
+  const areaVal   = document.getElementById('f-area').value.toLowerCase().trim();
   const searchVal = document.getElementById('f-search').value.toLowerCase().trim();
 
   document.querySelectorAll('.kb-card').forEach(card => {
     const matchType   = !typeVal   || card.dataset.type.toLowerCase() === typeVal;
+    const matchArea   = !areaVal   || (card.dataset.area || '').includes(areaVal);
     const matchSearch = !searchVal ||
       card.dataset.title.includes(searchVal) ||
       card.dataset.id.includes(searchVal);
 
-    card.style.display = (matchType && matchSearch) ? '' : 'none';
+    card.style.display = (matchType && matchArea && matchSearch) ? '' : 'none';
   });
 
   refreshCounts();
@@ -566,6 +590,12 @@ function applyFilters() {
 }
 
 document.getElementById('f-type').addEventListener('change', applyFilters);
+
+let areaTimer;
+document.getElementById('f-area').addEventListener('input', function () {
+  clearTimeout(areaTimer);
+  areaTimer = setTimeout(applyFilters, 280);
+});
 
 let searchTimer;
 document.getElementById('f-search').addEventListener('input', function () {
@@ -575,6 +605,7 @@ document.getElementById('f-search').addEventListener('input', function () {
 
 document.getElementById('f-reset').addEventListener('click', function () {
   document.getElementById('f-type').value = '';
+  document.getElementById('f-area').value = '';
   document.getElementById('f-search').value = '';
   applyFilters();
 });

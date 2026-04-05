@@ -7,13 +7,13 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Case, Count, IntegerField, When
-from incidents.models import Incident
+from incidents.models import Department, Incident
 
 
 def public_dashboard(request):
     total = Incident.objects.count()
     resolved = Incident.objects.filter(status='RESOLVED').count()
-    pending = Incident.objects.exclude(status__in=['RESOLVED', 'CLOSED']).count()
+    pending = Incident.objects.exclude(status='RESOLVED').count()
     return render(request, 'dashboard/public.html', {
         'total': total,
         'resolved': resolved,
@@ -44,23 +44,28 @@ def admin_panel(request):
         .order_by('priority_rank', 'deadline', '-created_at')
     )
 
-    status_filter = request.GET.get('status')
-    type_filter = request.GET.get('type')
+    status_filter = request.GET.get('status', '')
+    type_filter = request.GET.get('type', '')
+    area_filter = request.GET.get('area', '').strip()
     if status_filter:
         incidents = incidents.filter(status=status_filter)
     if type_filter:
         incidents = incidents.filter(incident_type=type_filter)
+    if area_filter:
+        incidents = incidents.filter(area__icontains=area_filter)
 
-    from accounts.models import User
-    workers = User.objects.filter(role='worker')
+    departments = Department.objects.all().order_by('name')
+    unrouted_count = Incident.objects.filter(incident_type='MISC', department__isnull=True).count()
 
     return render(request, 'dashboard/admin_panel.html', {
         'incidents': incidents,
-        'workers': workers,
+        'departments': departments,
+        'unrouted_count': unrouted_count,
         'status_choices': Incident.STATUS_CHOICES,
         'type_choices': Incident.TYPE_CHOICES,
         'selected_status': status_filter,
         'selected_type': type_filter,
+        'selected_area': area_filter,
     })
 
 
@@ -87,17 +92,11 @@ def worker_panel(request):
     return render(request, 'dashboard/worker_panel.html', {'incidents': incidents})
 
 
+@login_required
 def analytics_view(request):
     if request.user.role == 'citizen':
         return redirect('public_dashboard')
 
-    by_type = list(Incident.objects.values('incident_type').annotate(count=Count('id')))
-    type_labels = [d['incident_type'] for d in by_type]
-    type_counts = [d['count'] for d in by_type]
-
-    by_status = list(Incident.objects.values('status').annotate(count=Count('id')))
-    status_labels = [d['status'] for d in by_status]
-    status_counts = [d['count'] for d in by_status]
     by_type = list(Incident.objects.values('incident_type').annotate(count=Count('id')))
     type_labels = [d['incident_type'] for d in by_type]
     type_counts = [d['count'] for d in by_type]

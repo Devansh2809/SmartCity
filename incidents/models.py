@@ -32,15 +32,15 @@ class Incident(models.Model):
         ('STREETLIGHT', 'Streetlight Failure'),
         ('WATER_LEAK', 'Water Leakage'),
         ('TRAFFIC', 'Traffic Issue'),
+        ('MISC', 'Miscellaneous'),
     ]
 
     STATUS_CHOICES = [
         ('SUBMITTED', 'Submitted'),
         ('ASSIGNED', 'Assigned'),
         ('IN_PROGRESS', 'In Progress'),
-        ('RESOLVED', 'Resolved'),
-        ('CLOSED', 'Closed'),
         ('ESCALATED', 'Escalated'),
+        ('RESOLVED', 'Resolved'),
     ]
 
     PRIORITY_CHOICES = [
@@ -112,15 +112,17 @@ class Incident(models.Model):
         if not self.tracking_id:
             self.tracking_id = 'INC-' + str(uuid.uuid4()).upper().replace('-', '')[:8]
 
-        # Department routing by incident type
+        # Department routing by incident type.
+        # MISC incidents have no auto-routing; department must be set manually by admin.
         if not self.department_id:
-            dept_code = DEPT_ROUTING.get(self.incident_type, 'PUBLIC_WORKS')
-            self.department = Department.objects.filter(code=dept_code).first()
+            dept_code = DEPT_ROUTING.get(self.incident_type)
+            if dept_code:
+                self.department = Department.objects.filter(code=dept_code).first()
 
         # SLA deadline by priority (recompute when priority changes)
         priority_changed = old_priority is not None and old_priority != self.priority
         if not self.deadline or (
-            priority_changed and self.status not in ('RESOLVED', 'CLOSED', 'ESCALATED')
+            priority_changed and self.status not in ('RESOLVED', 'ESCALATED')
         ):
             hours = self.DEADLINE_HOURS.get(self.priority, 72)
             base_time = self.created_at or timezone.now()
@@ -150,7 +152,7 @@ class Incident(models.Model):
         return (
             self.deadline
             and timezone.now() > self.deadline
-            and self.status not in ('RESOLVED', 'CLOSED')
+            and self.status not in ('RESOLVED', 'ESCALATED')
         )
 
 

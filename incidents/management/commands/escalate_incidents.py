@@ -12,7 +12,7 @@ class Command(BaseCommand):
         overdue = (
             Incident.objects
             .filter(deadline__lt=now)
-            .exclude(status__in=['RESOLVED', 'CLOSED', 'ESCALATED'])
+            .exclude(status__in=['RESOLVED', 'ESCALATED'])
         )
 
         count = 0
